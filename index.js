@@ -41,6 +41,10 @@ async function run() {
     const userCollection = client.db("TicketBooking").collection("users");
     const adminCollection = client.db("TicketBooking").collection("admin");
     const messageCollection = client.db("TicketBooking").collection("message");
+    const claimCollection = client.db("TicketBooking").collection("claims");
+    const walletCollection = client
+      .db("TicketBooking")
+      .collection("walletUsers");
     io.on("connection", (socket) => {
       // Listen for incoming messages from a client
       socket.on("message", async (data) => {
@@ -114,6 +118,22 @@ async function run() {
       const review = req.body;
       console.log(review);
       const result = await ticketCollection.insertOne(review);
+
+      res.send(result);
+    });
+
+    app.get("/claims", async (req, res) => {
+      const email = req.query.email;
+      const query = { email: email };
+      const cursor = claimCollection.find(query);
+      const ticket = await cursor.toArray();
+      res.send(ticket);
+    });
+
+    app.post("/addClaim", async (req, res) => {
+      const claims = req.body;
+
+      const result = await claimCollection.insertOne(claims);
 
       res.send(result);
     });
@@ -210,9 +230,34 @@ async function run() {
       const result = await userCollection.insertOne(user);
       res.send(result);
     });
+    // post for wallet users method
+    app.post("/addUsers", async (req, res) => {
+      const user = req.body;
+      const result = await walletCollection.insertOne(user);
+      res.send(result);
+    });
     app.post("/admin", async (req, res) => {
       const user = req.body;
       const result = await adminCollection.insertOne(user);
+      res.send(result);
+    });
+
+    app.put("/claim/:id", async (req, res) => {
+      const id = req.params.id;
+      const updateUser = req.body;
+
+      const filter = { _id: new ObjectId(id) };
+      const options = { upsert: true };
+      const updateDoc = {
+        $set: {
+          status: updateUser.status,
+        },
+      };
+      const result = await claimCollection.updateOne(
+        filter,
+        updateDoc,
+        options
+      );
       res.send(result);
     });
 
@@ -266,6 +311,63 @@ async function run() {
       const query = {};
       const product = await managerCollection.find(query).toArray();
       res.send(product);
+    });
+    app.put("/addSeen/:id", async (req, res) => {
+      const id = req.params.id;
+      const updateUser = req.body;
+
+      const filter = { _id: new ObjectId(id) };
+      const options = { upsert: true };
+      const updateDoc = {
+        $set: {
+          status: updateUser.status,
+        },
+      };
+      const result = await messageCollection.updateOne(
+        filter,
+        updateDoc,
+        options
+      );
+      res.send(result);
+    });
+    // wallet section
+    app.put("/addBalance", async (req, res) => {
+      const { email, balance } = req.body;
+
+      try {
+        // Find the user with the provided email
+        const userCursor = walletCollection.find({ email: email });
+
+        // Convert the cursor to an array of documents
+        const users = await userCursor.toArray();
+
+        if (users.length === 0) {
+          return res
+            .status(404)
+            .json({ success: false, message: "User not found" });
+        }
+
+        // Assume that there is only one user with the given email
+        const user = users[0];
+
+        // Calculate the new balance by adding the new balance to the existing balance
+        const newBalance = parseInt(user.balance) + parseInt(balance);
+
+        // Update the user's balance
+        await walletCollection.updateOne(
+          { email: email },
+          { $set: { balance: newBalance } }
+        );
+
+        res
+          .status(200)
+          .json({ success: true, message: "Balance updated successfully" });
+      } catch (error) {
+        console.error("Error:", error);
+        res
+          .status(500)
+          .json({ success: false, message: "Internal server error" });
+      }
     });
   } finally {
   }
